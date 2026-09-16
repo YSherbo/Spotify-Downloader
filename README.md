@@ -9,6 +9,7 @@ A simple Python tool to download audio from a Spotify playlist using Spotify met
 - Converts audio to MP3
 - Embeds ID3 tags and album artwork from Spotify metadata
 - Provides both a command-line interface and a native GTK 4 interface
+- Provides a separate Qt 6 interface for desktop packaging
 
 ## Requirements
 
@@ -18,6 +19,7 @@ A simple Python tool to download audio from a Spotify playlist using Spotify met
 - `mutagen`
 - `requests`
 - GTK 4 and PyGObject (`python3-gi`, `gir1.2-gtk-4.0` on Debian/Ubuntu)
+- PySide6 for the Qt 6 interface
 - `ffmpeg` (required by `yt-dlp` for MP3 conversion)
 
 ## Setup
@@ -70,7 +72,35 @@ Launch the native GTK 4 interface with:
 python gtk_app.py
 ```
 
-The app follows the system theme, font, and icon theme. Enter a Spotify playlist URL or ID, choose an output folder, and press **Download**. Downloads run off the UI thread so the window remains responsive while Spotify and YouTube are working.
+The app follows the system theme, font, and icon theme. Use the navigation bar to choose one of these actions:
+
+- **Download playlist** — download every track in a Spotify playlist as MP3 files.
+- **Download song** — download one Spotify track URL or ID as an MP3 file.
+- **Get metadata** — apply Spotify tags and cover art to existing playlist MP3 files without downloading music.
+- **About** — view the author and website link.
+
+Choose an output folder and press **Download**. The GUI shows each song's download percentage and speed. Downloads run off the UI thread so the window remains responsive while Spotify and YouTube are working.
+
+When Spotify credentials are not present in the environment, the app opens a window for the Client ID and Client Secret. When Spotify authorization is needed, it opens the authorization page and asks for the complete redirected URL in a GUI window. Authentication and download errors are shown in GUI error dialogs.
+
+The app displays Spotify's `X-RateLimit-Remaining` value when the API returns it. Spotify does not include that value in every response, so the GUI reports when the remaining-request count is unavailable.
+
+### Qt 6 app
+
+Launch the separate Qt 6 interface with:
+
+```bash
+python qt_app.py
+```
+
+Build a desktop executable on the current platform with PyInstaller:
+
+```bash
+python -m pip install pyinstaller
+python build_qt.py
+```
+
+The executable is placed under `dist/SpotifyDownloaderQt`. The repository also includes a GitHub Actions workflow that builds Linux and Windows artifacts on their native runners.
 
 ## Options
 

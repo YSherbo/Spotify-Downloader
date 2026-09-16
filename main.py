@@ -52,22 +52,92 @@ RETRIES       = 2
  
 # ── SPOTIFY ───────────────────────────────────────────────────────────────────
  
-def spotify_client():
-    if not CLIENT_ID or not CLIENT_SECRET:
+def spotify_client(
+    client_id=None,
+    client_secret=None,
+    redirect_uri=None,
+    redirect_url=None,
+    api_status_callback=None,
+):
+    client_id = client_id or CLIENT_ID
+    client_secret = client_secret or CLIENT_SECRET
+    redirect_uri = redirect_uri or REDIRECT_URI
+    if not client_id or not client_secret:
         sys.exit("[ERROR] Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET env vars.")
-    return spotipy.Spotify(auth_manager=SpotifyOAuth(
-        client_id=CLIENT_ID,
-        client_secret=CLIENT_SECRET,
-        redirect_uri=REDIRECT_URI,
+    auth_manager = SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
         scope="playlist-read-private playlist-read-collaborative",
         cache_path=CACHE_PATH,
-        open_browser=True,
-    ))
+        open_browser=redirect_url is None,
+    )
+    if redirect_url:
+        code = auth_manager.parse_response_code(redirect_url)
+        auth_manager.get_access_token(code, as_dict=False)
+    client = spotipy.Spotify(auth_manager=auth_manager)
+    if api_status_callback and hasattr(client._session, "hooks"):
+        def report_api_status(response, *args, **kwargs):
+            api_status_callback(
+                response.headers.get("X-RateLimit-Remaining"),
+                response.headers.get("Retry-After"),
+            )
+
+        client._session.hooks["response"].append(report_api_status)
+    return client
+
+
+def spotify_auth_required(client_id, client_secret, redirect_uri=REDIRECT_URI):
+    auth_manager = SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        scope="playlist-read-private playlist-read-collaborative",
+        cache_path=CACHE_PATH,
+        open_browser=False,
+    )
+    return auth_manager.get_cached_token() is None
+
+
+def spotify_authorization_url(client_id, client_secret, redirect_uri=REDIRECT_URI):
+    auth_manager = SpotifyOAuth(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        scope="playlist-read-private playlist-read-collaborative",
+        cache_path=CACHE_PATH,
+        open_browser=False,
+    )
+    return auth_manager.get_authorize_url()
  
  
 def playlist_id(url: str) -> str:
     m = re.search(r"playlist/([A-Za-z0-9]+)", url)
     return m.group(1) if m else url.strip()
+
+
+def track_id(url: str) -> str:
+    m = re.search(r"track/([A-Za-z0-9]+)", url)
+    return m.group(1) if m else url.strip()
+
+
+def track_data(t: dict) -> dict:
+    album = t.get("album", {})
+    return {
+        "title": t["name"],
+        "artists": [a["name"] for a in t.get("artists", [])],
+        "album": album.get("name", ""),
+        "album_artist": [a["name"] for a in album.get("artists", [])],
+        "track_num": t.get("track_number", 0),
+        "disc_num": t.get("disc_number", 1),
+        "year": (album.get("release_date", "") or "")[:4],
+        "isrc": t.get("external_ids", {}).get("isrc", ""),
+        "cover_url": album["images"][0]["url"] if album.get("images") else None,
+    }
+
+
+def get_track(sp, tr_id: str) -> dict:
+    return track_data(sp.track(tr_id, market=MARKET))
  
  
 def get_tracks(sp, pl_id: str) -> tuple[str, str, list[dict]]:
@@ -88,18 +158,7 @@ def get_tracks(sp, pl_id: str) -> tuple[str, str, list[dict]]:
             if not t.get("name"):
                 continue
  
-            album = t.get("album", {})
-            tracks.append({
-                "title":        t["name"],
-                "artists":      [a["name"] for a in t.get("artists", [])],
-                "album":        album.get("name", ""),
-                "album_artist": [a["name"] for a in album.get("artists", [])],
-                "track_num":    t.get("track_number", 0),
-                "disc_num":     t.get("disc_number", 1),
-                "year":         (album.get("release_date", "") or "")[:4],
-                "isrc":         t.get("external_ids", {}).get("isrc", ""),
-                "cover_url":    album["images"][0]["url"] if album.get("images") else None,
-            })
+            tracks.append(track_data(t))
  
         if page.get("next"):
             page = sp.next(page)
@@ -115,7 +174,7 @@ def safe_name(s: str) -> str:
     return re.sub(r'[<>:"/\\|?*\n\r]', "_", s).strip()
  
  
-def download(track: dict, dest: Path) -> Path | None:
+def download(track: dict, dest: Path, progress_callback=None) -> Path | None:
     artist = track["artists"][0] if track["artists"] else ""
     query  = f"ytsearch1:{artist} - {track['title']} audio"
     fname  = safe_name(f"{artist} - {track['title']}")
@@ -123,6 +182,12 @@ def download(track: dict, dest: Path) -> Path | None:
 
     if final.exists():
         print(f"  [skip] {final.name}")
+        if progress_callback:
+            progress_callback({
+                "status": "finished",
+                "downloaded_bytes": 1,
+                "total_bytes": 1,
+            })
         return final
 
     # Use ytsearch1 to find the best matching result directly.
@@ -134,6 +199,7 @@ def download(track: dict, dest: Path) -> Path | None:
             "quiet":         True,
             "no_warnings":   True,
             "noplaylist":    True,
+            "progress_hooks": [progress_callback] if progress_callback else [],
             "postprocessors": [{
                 "key":              "FFmpegExtractAudio",
                 "preferredcodec":   "mp3",

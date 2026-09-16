@@ -2,3 +2,4 @@ spotipy
 yt-dlp
 mutagen
 requests
+PySide6
