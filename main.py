@@ -20,6 +20,7 @@ Usage:
  
 import os, sys, re, time, shutil, argparse, tempfile, requests, urllib.parse
 from pathlib import Path
+from builtins import ImportError
  
 try:
     import spotipy

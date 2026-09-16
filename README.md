@@ -8,6 +8,7 @@ A simple Python tool to download audio from a Spotify playlist using Spotify met
 - Downloads audio from YouTube Music with `yt-dlp`
 - Converts audio to MP3
 - Embeds ID3 tags and album artwork from Spotify metadata
+- Provides both a command-line interface and a native GTK 4 interface
 
 ## Requirements
 
@@ -16,13 +17,21 @@ A simple Python tool to download audio from a Spotify playlist using Spotify met
 - `yt-dlp`
 - `mutagen`
 - `requests`
+- GTK 4 and PyGObject (`python3-gi`, `gir1.2-gtk-4.0` on Debian/Ubuntu)
+- `ffmpeg` (required by `yt-dlp` for MP3 conversion)
 
 ## Setup
 
 1. Install dependencies:
 
 ```bash
-pip install spotipy yt-dlp mutagen requests
+pip install -r requirements.txt
+```
+
+On Debian/Ubuntu, install the native GTK runtime separately:
+
+```bash
+sudo apt install python3-gi gir1.2-gtk-4.0 ffmpeg
 ```
 
 2. Set Spotify credentials in environment variables:
@@ -51,7 +60,17 @@ python main.py <playlist_url> [output_dir]
 python main.py https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
 ```
 
-This will create a directory named after the playlist inside `./downloads`.
+This creates a directory named after the playlist inside `./downloads`.
+
+### GTK app
+
+Launch the native GTK 4 interface with:
+
+```bash
+python gtk_app.py
+```
+
+The app follows the system theme, font, and icon theme. Enter a Spotify playlist URL or ID, choose an output folder, and press **Download**. Downloads run off the UI thread so the window remains responsive while Spotify and YouTube are working.
 
 ## Options
 
